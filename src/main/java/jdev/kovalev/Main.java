@@ -1,7 +1,6 @@
 package jdev.kovalev;
 
-import jdev.kovalev.exception.BufferOverflowException;
-import jdev.kovalev.exception.EmptyBufferException;
+import jdev.kovalev.exception.ClosedBufferException;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -12,8 +11,6 @@ public class Main {
         RingBuffer<Integer> buffer = new RingBuffer<>(10);
         ExecutorService executorService = Executors.newFixedThreadPool(3);
 
-        Object monitor = new Object();
-
         executorService.execute(() -> {
             int i = 0;
             while (i < 20) {
@@ -22,74 +19,59 @@ public class Main {
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
-                synchronized (monitor) {
-                    try {
-                        buffer.add(i);
-                        System.out.printf("Поток %s добавил элемент %d \n", Thread.currentThread().getName(), i);
-                        monitor.notifyAll();
-                        i++;
-                    } catch (BufferOverflowException e) {
-                        try {
-                            monitor.wait();
-                        } catch (InterruptedException ex) {
-                            Thread.currentThread().interrupt();
-                            return;
-                        }
-                    }
+                try {
+                    buffer.put(i);
+                    System.out.printf("Поток %s добавил элемент %d \n", Thread.currentThread().getName(), i);
+                    i++;
+                } catch (ClosedBufferException e) {
+                    System.err.println(e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
                 }
             }
         });
 
         executorService.execute(() -> {
             int i = 20;
-            while (i < 50){
+            while (i < 50) {
                 try {
                     Thread.sleep(10);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
-                synchronized (monitor) {
-                    try {
-                        buffer.add(i);
-                        System.out.printf("Поток %s добавил элемент %d \n", Thread.currentThread().getName(), i);
-                        monitor.notifyAll();
-                        i++;
-                    } catch (BufferOverflowException e) {
-                        try {
-                            monitor.wait();
-                        } catch (InterruptedException ex) {
-                            Thread.currentThread().interrupt();
-                            return;
-                        }
-                    }
+                try {
+                    buffer.put(i);
+                    System.out.printf("Поток %s добавил элемент %d \n", Thread.currentThread().getName(), i);
+                    i++;
+                } catch (ClosedBufferException e) {
+                    System.err.println(e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
                 }
             }
         });
 
         executorService.execute(() -> {
-           int counter = 0;
-           while (counter < 50) {
-               try {
-                   Thread.sleep(100);
-               } catch (InterruptedException e) {
-                   throw new RuntimeException(e);
-               }
-               synchronized (monitor) {
-                   try {
-                       Integer e = buffer.get();
-                       System.out.printf("Поток %s прочитал %d \n", Thread.currentThread().getName(), e);
-                       counter++;
-                       monitor.notifyAll();
-                   } catch (EmptyBufferException e) {
-                       try {
-                           monitor.wait();
-                       } catch (InterruptedException ex) {
-                           Thread.currentThread().interrupt();
-                           return;
-                       }
-                   }
-               }
-           }
+            int counter = 0;
+            while (counter < 50) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                try {
+                    Integer e = buffer.take();
+                    System.out.printf("Поток %s прочитал %d \n", Thread.currentThread().getName(), e);
+                    counter++;
+                } catch (ClosedBufferException e) {
+                    System.err.println(e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
         });
 
         executorService.shutdown();

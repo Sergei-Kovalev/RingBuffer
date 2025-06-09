@@ -1,6 +1,6 @@
 package jdev.kovalev;
 
-import jdev.kovalev.exception.BufferOverflowException;
+import jdev.kovalev.exception.ClosedBufferException;
 import jdev.kovalev.exception.EmptyBufferException;
 
 public class RingBuffer<T> {
@@ -9,6 +9,7 @@ public class RingBuffer<T> {
     private int head = 0;
     private int tail = 0;
     private final T[] array;
+    private volatile boolean closed = false;
 
     @SuppressWarnings("unchecked")
     public RingBuffer(int capacity) {
@@ -19,21 +20,33 @@ public class RingBuffer<T> {
         this.array = (T[])new Object[capacity];
     }
 
-    public synchronized void add(T element) throws BufferOverflowException {
-        if (size >= capacity) {
-            throw new BufferOverflowException();
+    public synchronized void put(T element) throws InterruptedException, ClosedBufferException {
+        if (closed) {
+            throw new ClosedBufferException();
+        }
+        while (size == capacity) {
+            wait();
+            if (closed) {
+                throw new ClosedBufferException();
+            }
         }
 
         array[tail] = element;
-
         tail = (tail + 1) % capacity;
         size++;
+        notifyAll();
     }
 
     // Получить и удалить элемент
-    public synchronized T get() throws EmptyBufferException {
-        if (size == 0) {
-            throw new EmptyBufferException();
+    public synchronized T take() throws ClosedBufferException, InterruptedException {
+        if (closed) {
+            throw new ClosedBufferException();
+        }
+        while (size == 0){
+            wait();
+            if (closed) {
+                throw new ClosedBufferException();
+            }
         }
 
         T element = array[head];
@@ -41,7 +54,7 @@ public class RingBuffer<T> {
 
         head = (head + 1) % capacity;
         size--;
-
+        notifyAll();
         return element;
     }
 
@@ -50,7 +63,6 @@ public class RingBuffer<T> {
         if (size == 0) {
             throw new EmptyBufferException();
         }
-
         return array[head];
     }
 
@@ -64,5 +76,13 @@ public class RingBuffer<T> {
 
     public synchronized int getSize() {
         return size;
+    }
+
+    public synchronized void close() {
+        closed = true;
+    }
+
+    public synchronized boolean isClosed() {
+        return closed;
     }
 }
